@@ -56,7 +56,6 @@ import MoneyReceipt, { ReceiptsHistoryList } from "../components/MoneyReceipt";
 import PatientForm, { type PatientFormData } from "../components/PatientForm";
 import { useEmailAuth } from "../hooks/useEmailAuth";
 import {
-  _canisterActorRef,
   useCreatePatient,
   useGetAllPatients,
 } from "../hooks/useQueries";
@@ -65,6 +64,7 @@ import { useReceipts } from "../hooks/useReceipts";
 import { usePublicBookings } from "../hooks/usePublicBookings";
 import { enqueueSync } from "../lib/hybridStorage";
 import { buildFollowUpMessage } from "../lib/whatsappTemplates";
+import { supabase } from "../lib/supabase";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -136,15 +136,12 @@ function saveSerials(data: SerialEntry[]) {
   localStorage.setItem(todayKey(), JSON.stringify(data));
 }
 
-// ─── Canister sync helpers ────────────────────────────────────────────────────
-
-/** Push appointment changes to the canister — fire-and-forget, never throws */
-async function syncAppointmentToCanister(
+/** Push appointment changes to Supabase — fire-and-forget, never throws */
+async function syncAppointmentToSupabase(
   op: "create" | "update" | "delete",
   entry: AppointmentEntry,
 ): Promise<void> {
-  const actor = _canisterActorRef();
-  if (!actor || !navigator.onLine) {
+  if (!navigator.onLine) {
     enqueueSync({
       timestamp: Date.now(),
       operation: op,
@@ -154,14 +151,25 @@ async function syncAppointmentToCanister(
     });
     return;
   }
+
   try {
     if (op === "delete") {
-      await actor.deleteAppointment(entry.id);
+      const { error } = await supabase
+        .from("appointments")
+        .delete()
+        .eq("id", entry.id);
+
+      if (error) throw error;
     } else {
-      await actor.bulkUpsertAppointments([entry]);
+      const { error } = await supabase
+        .from("appointments")
+        .upsert([entry]);
+
+      if (error) throw error;
     }
   } catch (e) {
-    console.warn("Canister appointment sync failed, queuing:", e);
+    console.warn("Supabase appointment sync failed, queuing:", e);
+
     enqueueSync({
       timestamp: Date.now(),
       operation: op,
@@ -172,14 +180,15 @@ async function syncAppointmentToCanister(
   }
 }
 
-/** Push queue-entry changes to the canister — fire-and-forget, never throws */
-async function syncQueueEntryToCanister(
+
+/** Push queue-entry changes to Supabase — fire-and-forget, never throws */
+async function syncQueueEntryToSupabase(
   op: "create" | "update" | "delete",
   entry: SerialEntry,
 ): Promise<void> {
-  const actor = _canisterActorRef();
   const enriched = { ...entry, queueDate: todayStr() };
-  if (!actor || !navigator.onLine) {
+
+  if (!navigator.onLine) {
     enqueueSync({
       timestamp: Date.now(),
       operation: op,
@@ -189,14 +198,25 @@ async function syncQueueEntryToCanister(
     });
     return;
   }
+
   try {
     if (op === "delete") {
-      await actor.deleteQueueEntry(entry.id);
+      const { error } = await supabase
+        .from("queue_entries")
+        .delete()
+        .eq("id", entry.id);
+
+      if (error) throw error;
     } else {
-      await actor.bulkUpsertQueueEntries([enriched]);
+      const { error } = await supabase
+        .from("queue_entries")
+        .upsert(enriched);
+
+      if (error) throw error;
     }
   } catch (e) {
-    console.warn("Canister queue-entry sync failed, queuing:", e);
+    console.warn("Supabase queue-entry sync failed, queuing:", e);
+
     enqueueSync({
       timestamp: Date.now(),
       operation: op,
@@ -206,55 +226,65 @@ async function syncQueueEntryToCanister(
     });
   }
 }
+async function loadAppointments(): Promise<AppointmentEntry[]> {
+  const { data, error } = await supabase
+    .from("appointments")
+    .select("*");
 
-function loadAppointments(): AppointmentEntry[] {
-  try {
-    const a = JSON.parse(
-      localStorage.getItem("clinic_appointments") || "[]",
-    ) as AppointmentEntry[];
-    const b = JSON.parse(
-      localStorage.getItem("public_appointment_requests") || "[]",
-    );
-    // Merge: public requests that have preferredDate → convert to AppointmentEntry
-    const converted = b
-      .filter((x: Record<string, unknown>) => x.preferredDate || x.date)
-      .map((x: Record<string, unknown>) => ({
-        id: x.id || x.patientName,
-        patientName: (x.patientName || x.name || "") as string,
-        phone: (x.phone || "") as string,
-        date: (x.preferredDate || x.date || "") as string,
-        time: (x.preferredTime || x.time || "") as string,
-        reason: (x.reason || x.notes || "") as string,
-        status:
-          (x.status as AppointmentStatus) === "confirmed"
-            ? "confirmed"
-            : (x.status as AppointmentStatus) === "cancelled"
-              ? "cancelled"
-              : "scheduled",
-        doctor: (x.preferredDoctor || x.doctor || "") as string,
-        chamber: (x.preferredChamber || x.chamber || "") as string,
-        registerNumber: (x.registerNumber || "") as string,
-        appointmentType: ((x.appointmentType as AppointmentType) ||
-          "chamber") as AppointmentType,
-        hospitalName: (x.hospitalName || "") as string,
-        bedWardNumber: (x.bedWardNumber || "") as string,
-        admissionReason: (x.admissionReason || "") as string,
-        referringDoctor: (x.referringDoctor || "") as string,
-        serialNumber: x.serialNumber as number | undefined,
-        serialDate: (x.serialDate || "") as string,
-        visitTime: (x.visitTime || "") as string,
-        _isPublic: true,
-      }));
-    // Deduplicate by id
-    const combined: AppointmentEntry[] = [...a];
-    for (const c of converted) {
-      if (!combined.find((x) => x.id === c.id)) combined.push(c);
-    }
-    return combined;
-  } catch {
+  if (error) {
+    console.error("Failed to load appointments:", error);
     return [];
   }
+
+  return data ?? [];
 }
+    const rawB = JSON.parse(
+  localStorage.getItem("public_appointment_requests") || "[]"
+);
+
+const b: Record<string, any>[] = Array.isArray(rawB) ? rawB : [];
+
+// Merge: public requests → AppointmentEntry
+const converted = b
+  .filter((x) => x.preferredDate || x.date)
+  .map((x) => ({
+    id: x.id || x.patientName,
+    patientName: String(x.patientName || x.name || ""),
+    phone: String(x.phone || ""),
+    date: String(x.preferredDate || x.date || ""),
+    time: String(x.preferredTime || x.time || ""),
+    reason: String(x.reason || x.notes || ""),
+    status:
+      x.status === "confirmed"
+        ? "confirmed"
+        : x.status === "cancelled"
+        ? "cancelled"
+        : "scheduled",
+    doctor: String(x.preferredDoctor || x.doctor || ""),
+    chamber: String(x.preferredChamber || x.chamber || ""),
+    registerNumber: String(x.registerNumber || ""),
+    appointmentType: x.appointmentType || "chamber",
+    hospitalName: String(x.hospitalName || ""),
+    bedWardNumber: String(x.bedWardNumber || ""),
+    admissionReason: String(x.admissionReason || ""),
+    referringDoctor: String(x.referringDoctor || ""),
+    serialNumber:
+      typeof x.serialNumber === "number" ? x.serialNumber : undefined,
+    serialDate: String(x.serialDate || ""),
+    visitTime: String(x.visitTime || ""),
+    _isPublic: true,
+  }));
+
+const combined: AppointmentEntry[] = [...a];
+const seen = new Set(combined.map((x) => x.id));
+
+for (const c of converted) {
+  if (!seen.has(c.id)) {
+    combined.push(c);
+    seen.add(c.id);
+  }
+}
+
 
 function saveAppointments(data: AppointmentEntry[]) {
   localStorage.setItem(

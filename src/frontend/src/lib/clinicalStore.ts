@@ -79,3 +79,8 @@ export async function deleteClinicalRecord(
 
   return true;
 }
+
+export async function saveClinicalStore(data: any) {
+  // temporary compatibility wrapper
+  console.log("saveClinicalStore called", data);
+}
