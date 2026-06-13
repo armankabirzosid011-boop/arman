@@ -30,12 +30,12 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  getCanisterActor,
   loadFromAllDoctorKeys,
   useAssignBed,
   useCreateBedRecord,
   useGetAllBeds,
 } from "../hooks/useQueries";
+import { supabase } from "../lib/supabase";
 import { getClinicalStore, saveClinicalStore } from "../lib/clinicalStore";
 import { saveClinicalEntitiesWithSync } from "../lib/hybridStorage";
 import type { BedRecord, BedType, Patient } from "../types";
