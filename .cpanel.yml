@@ -1,13 +1,21 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/USERNAME/public_html/
+    - export DEPLOYPATH=/home/drarmank/public_html
 
-    # Create deployment directory if it doesn't exist
+    # Install dependencies and build frontend
+    - cd src/frontend
+    - npm install
+    - npm run build
+
+    # Create deployment directory
     - /bin/mkdir -p $DEPLOYPATH
 
-    # Copy Vite build output
-    - /bin/cp -R src/frontend/dist/* $DEPLOYPATH
+    # Remove old files
+    - /bin/find $DEPLOYPATH -mindepth 1 -maxdepth 1 -exec rm -rf {} \;
 
-    # SPA routing support
+    # Copy Vite build output
+    - /bin/cp -R dist/* $DEPLOYPATH/
+
+    # React Router SPA fallback
     - /bin/cp $DEPLOYPATH/index.html $DEPLOYPATH/404.html
