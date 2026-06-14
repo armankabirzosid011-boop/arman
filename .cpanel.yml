@@ -1,0 +1,13 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/USERNAME/public_html/
+
+    # Create deployment directory if it doesn't exist
+    - /bin/mkdir -p $DEPLOYPATH
+
+    # Copy Vite build output
+    - /bin/cp -R src/frontend/dist/* $DEPLOYPATH
+
+    # SPA routing support
+    - /bin/cp $DEPLOYPATH/index.html $DEPLOYPATH/404.html
