@@ -3,19 +3,23 @@ deployment:
   tasks:
     - export DEPLOYPATH=/home/drarmank/public_html
 
-    # Install dependencies and build frontend
+    # Go to frontend app
     - cd src/frontend
+
+    # Install dependencies
     - npm install
+
+    # Build Vite app
     - npm run build
 
     # Create deployment directory
     - /bin/mkdir -p $DEPLOYPATH
 
-    # Remove old files
+    # Clean old files
     - /bin/find $DEPLOYPATH -mindepth 1 -maxdepth 1 -exec rm -rf {} \;
 
-    # Copy Vite build output
+    # Copy build files
     - /bin/cp -R dist/* $DEPLOYPATH/
 
-    # React Router SPA fallback
+    # React Router fallback
     - /bin/cp $DEPLOYPATH/index.html $DEPLOYPATH/404.html
