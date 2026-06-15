@@ -238,64 +238,71 @@ async function loadAppointments(): Promise<AppointmentEntry[]> {
 
   return data ?? [];
 }
-    const rawB = JSON.parse(
-  localStorage.getItem("public_appointment_requests") || "[]"
-);
+    async function loadAppointments(): Promise<AppointmentEntry[]> {
+  const { data, error } = await supabase
+    .from("appointments")
+    .select("*");
 
-const b: Record<string, any>[] = Array.isArray(rawB) ? rawB : [];
+  if (error) {
+    console.error("Failed to load appointments:", error);
+    return [];
+  }
 
-// Merge: public requests → AppointmentEntry
-const rawA = JSON.parse(
-  localStorage.getItem("clinic_appointments") || "[]"
-);
+  const appointments: AppointmentEntry[] = data ?? [];
 
-const a: AppointmentEntry[] = Array.isArray(rawA) ? rawA : [];
+  const rawB = JSON.parse(
+    localStorage.getItem("public_appointment_requests") || "[]"
+  );
 
-const rawB = JSON.parse(
-  localStorage.getItem("public_appointment_requests") || "[]"
-);
+  const b: Record<string, any>[] = Array.isArray(rawB) ? rawB : [];
 
-const b: Record<string, any>[] = Array.isArray(rawB) ? rawB : [];
-
-const converted = b
-  .filter((x) => x.preferredDate || x.date)
-  .map((x) => ({
-    id: x.id || x.patientName,
-    patientName: String(x.patientName || x.name || ""),
-    phone: String(x.phone || ""),
-    date: String(x.preferredDate || x.date || ""),
-    time: String(x.preferredTime || x.time || ""),
-    reason: String(x.reason || x.notes || ""),
-    status:
-      x.status === "confirmed"
-        ? "confirmed"
-        : x.status === "cancelled"
+  // Merge public requests → AppointmentEntry
+  const converted: AppointmentEntry[] = b
+    .filter((x) => x.preferredDate || x.date)
+    .map((x) => ({
+      id: String(x.id || x.patientName || crypto.randomUUID()),
+      patientName: String(x.patientName || x.name || ""),
+      phone: String(x.phone || ""),
+      date: String(x.preferredDate || x.date || ""),
+      time: String(x.preferredTime || x.time || ""),
+      reason: String(x.reason || x.notes || ""),
+      status:
+        x.status === "confirmed"
+          ? "confirmed"
+          : x.status === "cancelled"
           ? "cancelled"
           : "scheduled",
-    doctor: String(x.preferredDoctor || x.doctor || ""),
-    chamber: String(x.preferredChamber || x.chamber || ""),
-    registerNumber: String(x.registerNumber || ""),
-    appointmentType: x.appointmentType || "chamber",
-    hospitalName: String(x.hospitalName || ""),
-    bedWardNumber: String(x.bedWardNumber || ""),
-    admissionReason: String(x.admissionReason || ""),
-    referringDoctor: String(x.referringDoctor || ""),
-    serialNumber:
-      typeof x.serialNumber === "number" ? x.serialNumber : undefined,
-    serialDate: String(x.serialDate || ""),
-    visitTime: String(x.visitTime || ""),
-    _isPublic: true,
-  }));
+      doctor: String(x.preferredDoctor || x.doctor || ""),
+      chamber: String(x.preferredChamber || x.chamber || ""),
+      registerNumber: String(x.registerNumber || ""),
+      appointmentType:
+        x.appointmentType === "admitted"
+          ? "admitted"
+          : "chamber",
+      hospitalName: String(x.hospitalName || ""),
+      bedWardNumber: String(x.bedWardNumber || ""),
+      admissionReason: String(x.admissionReason || ""),
+      referringDoctor: String(x.referringDoctor || ""),
+      serialNumber:
+        typeof x.serialNumber === "number"
+          ? x.serialNumber
+          : undefined,
+      serialDate: String(x.serialDate || ""),
+      visitTime: String(x.visitTime || ""),
+    }));
 
-const combined: AppointmentEntry[] = [...a];
+  const combined: AppointmentEntry[] = [...appointments];
 
-const seen = new Set(combined.map((x) => x.id));
+  const seen = new Set(combined.map((x) => x.id));
 
-for (const c of converted) {
-  if (!seen.has(c.id)) {
-    combined.push(c);
-    seen.add(c.id);
+  for (const c of converted) {
+    if (!seen.has(c.id)) {
+      combined.push(c);
+      seen.add(c.id);
+    }
   }
+
+  return combined;
 }
 // ─── Conflict check ──────────────────────────────────────────────────────────
 
