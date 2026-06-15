@@ -238,16 +238,7 @@ async function loadAppointments(): Promise<AppointmentEntry[]> {
 
   return data ?? [];
 }
-    async function loadAppointments(): Promise<AppointmentEntry[]> {
-  const { data, error } = await supabase
-    .from("appointments")
-    .select("*");
-
-  if (error) {
-    console.error("Failed to load appointments:", error);
-    return [];
-  }
-
+   
   const appointments: AppointmentEntry[] = data ?? [];
 
   const rawB = JSON.parse(
