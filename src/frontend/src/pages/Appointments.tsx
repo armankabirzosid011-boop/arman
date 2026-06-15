@@ -245,6 +245,18 @@ async function loadAppointments(): Promise<AppointmentEntry[]> {
 const b: Record<string, any>[] = Array.isArray(rawB) ? rawB : [];
 
 // Merge: public requests → AppointmentEntry
+const rawA = JSON.parse(
+  localStorage.getItem("clinic_appointments") || "[]"
+);
+
+const a: AppointmentEntry[] = Array.isArray(rawA) ? rawA : [];
+
+const rawB = JSON.parse(
+  localStorage.getItem("public_appointment_requests") || "[]"
+);
+
+const b: Record<string, any>[] = Array.isArray(rawB) ? rawB : [];
+
 const converted = b
   .filter((x) => x.preferredDate || x.date)
   .map((x) => ({
@@ -258,8 +270,8 @@ const converted = b
       x.status === "confirmed"
         ? "confirmed"
         : x.status === "cancelled"
-        ? "cancelled"
-        : "scheduled",
+          ? "cancelled"
+          : "scheduled",
     doctor: String(x.preferredDoctor || x.doctor || ""),
     chamber: String(x.preferredChamber || x.chamber || ""),
     registerNumber: String(x.registerNumber || ""),
@@ -276,6 +288,7 @@ const converted = b
   }));
 
 const combined: AppointmentEntry[] = [...a];
+
 const seen = new Set(combined.map((x) => x.id));
 
 for (const c of converted) {
@@ -284,26 +297,6 @@ for (const c of converted) {
     seen.add(c.id);
   }
 }
-
-
-function saveAppointments(data: AppointmentEntry[]) {
-  localStorage.setItem(
-    "clinic_appointments",
-    JSON.stringify(
-      data.filter((d) => !(d as unknown as Record<string, unknown>)._isPublic),
-    ),
-  );
-}
-
-function uid() {
-  return Math.random().toString(36).slice(2, 10);
-}
-
-function nowTime() {
-  const d = new Date();
-  return d.toTimeString().slice(0, 5);
-}
-
 // ─── Conflict check ──────────────────────────────────────────────────────────
 
 /**
