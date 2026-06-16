@@ -139,12 +139,11 @@ function saveSerials(data: SerialEntry[]) {
 // ─── Canister sync helpers ────────────────────────────────────────────────────
 
 /** Push appointment changes to the canister — fire-and-forget, never throws */
-async function syncAppointmentToCanister(
+async function syncAppointmentToSupabase(
   op: "create" | "update" | "delete",
   entry: AppointmentEntry,
 ): Promise<void> {
-  const actor = _canisterActorRef();
-  if (!actor || !navigator.onLine) {
+  if (!navigator.onLine) {
     enqueueSync({
       timestamp: Date.now(),
       operation: op,
@@ -154,14 +153,24 @@ async function syncAppointmentToCanister(
     });
     return;
   }
+
   try {
     if (op === "delete") {
-      await actor.deleteAppointment(entry.id);
+      const { error } = await supabase
+        .from("appointments")
+        .delete()
+        .eq("id", entry.id);
+
+      if (error) throw error;
     } else {
-      await actor.bulkUpsertAppointments([entry]);
+      const { error } = await supabase
+        .from("appointments")
+        .upsert([entry]);
+
+      if (error) throw error;
     }
   } catch (e) {
-    console.warn("Canister appointment sync failed, queuing:", e);
+    console.warn("Supabase appointment sync failed, queuing:", e);
     enqueueSync({
       timestamp: Date.now(),
       operation: op,
@@ -1046,7 +1055,7 @@ function ChamberAppointmentsTab() {
         appointments.map((a) => (a.id === editTarget.id ? updatedEntry : a)),
       );
       toast.success("Appointment updated");
-      syncAppointmentToCanister("update", updatedEntry);
+      syncAppointmentToSupabase("update", updatedEntry);
     } else {
       const entry: AppointmentEntry = {
         id: uid(),
@@ -1067,7 +1076,7 @@ function ChamberAppointmentsTab() {
       toast.success(
         `Appointment scheduled for ${entry.patientName} — Serial #${serial}`,
       );
-      syncAppointmentToCanister("create", entry);
+      syncAppointmentToSupabase("create", entry);
     }
     setAddOpen(false);
   }
@@ -1076,7 +1085,7 @@ function ChamberAppointmentsTab() {
     const entry = appointments.find((a) => a.id === id);
     persist(appointments.filter((a) => a.id !== id));
     toast.success("Appointment deleted");
-    if (entry) syncAppointmentToCanister("delete", entry);
+    if (entry) syncAppointmentToSupabase("delete", entry);
   }
 
   const chamberOnly = appointments.filter(
@@ -1764,7 +1773,7 @@ function AdmittedPatientsTab() {
         appointments.map((a) => (a.id === editTarget.id ? updatedEntry : a)),
       );
       toast.success("Admission appointment updated");
-      syncAppointmentToCanister("update", updatedEntry);
+      syncAppointmentToSupabase("update", updatedEntry);
     } else {
       const entry: AppointmentEntry = {
         id: uid(),
@@ -1788,7 +1797,7 @@ function AdmittedPatientsTab() {
       toast.success(
         `Admission scheduled for ${entry.patientName} — Daily Serial #${serial}`,
       );
-      syncAppointmentToCanister("create", entry);
+      syncAppointmentToSupabase("create", entry);
     }
     setAddOpen(false);
   }
@@ -1802,7 +1811,7 @@ function AdmittedPatientsTab() {
     const entry = updated.find((a) => a.id === timePickerTarget.id);
     setTimePickerTarget(null);
     toast.success(`Visit time set to ${timePickerVal}`);
-    if (entry) syncAppointmentToCanister("update", entry);
+    if (entry) syncAppointmentToSupabase("update", entry);
   }
 
   // Auto-generate today's admission slot for admitted patients from visit form
