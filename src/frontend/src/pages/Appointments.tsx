@@ -136,6 +136,63 @@ function saveSerials(data: SerialEntry[]) {
   localStorage.setItem(todayKey(), JSON.stringify(data));
 }
 
+// ─── Supabase load helpers ────────────────────────────────────────────────────
+
+/** Fetch appointments from Supabase and sync to localStorage */
+async function loadAppointmentsFromSupabase(): Promise<AppointmentEntry[]> {
+  try {
+    const { data, error } = await supabase
+      .from("appointments")
+      .select("*");
+
+    if (error) {
+      console.warn("Failed to load appointments from Supabase:", error);
+      return loadAppointments(); // Fallback to localStorage
+    }
+
+    if (data && data.length > 0) {
+      // Save to localStorage for offline access
+      localStorage.setItem(
+        "clinic_appointments",
+        JSON.stringify(data.filter((d: any) => !d._isPublic)),
+      );
+      return data as AppointmentEntry[];
+    }
+
+    return loadAppointments(); // Fallback to localStorage
+  } catch (e) {
+    console.warn("Supabase load appointments failed, using localStorage:", e);
+    return loadAppointments();
+  }
+}
+
+/** Fetch serials from Supabase for today and sync to localStorage */
+async function loadSerialsFromSupabase(): Promise<SerialEntry[]> {
+  try {
+    const today = todayStr();
+    const { data, error } = await supabase
+      .from("queue_entries")
+      .select("*")
+      .eq("queueDate", today);
+
+    if (error) {
+      console.warn("Failed to load serials from Supabase:", error);
+      return loadSerials(); // Fallback to localStorage
+    }
+
+    if (data && data.length > 0) {
+      // Save to localStorage for offline access
+      localStorage.setItem(todayKey(), JSON.stringify(data));
+      return data as SerialEntry[];
+    }
+
+    return loadSerials(); // Fallback to localStorage
+  } catch (e) {
+    console.warn("Supabase load serials failed, using localStorage:", e);
+    return loadSerials();
+  }
+}
+
 // ─── Canister sync helpers ────────────────────────────────────────────────────
 
 /** Push appointment changes to the canister — fire-and-forget, never throws */
@@ -523,6 +580,15 @@ function DoctorSerialTab() {
   const [form, setForm] = useState({ name: "", phone: "" });
   const { currentDoctor } = useEmailAuth();
   const isDoctor = !currentDoctor || currentDoctor.role === "doctor";
+
+  // Load serials from Supabase on mount
+  useEffect(() => {
+    const loadData = async () => {
+      const data = await loadSerialsFromSupabase();
+      setSerials(data);
+    };
+    loadData();
+  }, []);
 
   const persist = (data: SerialEntry[]) => {
     setSerials(data);
@@ -932,6 +998,15 @@ function ChamberAppointmentsTab() {
     registerNumber: "",
   };
   const [form, setForm] = useState(emptyForm);
+
+  // Load appointments from Supabase on mount
+  useEffect(() => {
+    const loadData = async () => {
+      const data = await loadAppointmentsFromSupabase();
+      setAppointments(data);
+    };
+    loadData();
+  }, []);
 
   const persist = (data: AppointmentEntry[]) => {
     setAppointments(data);
@@ -1643,6 +1718,15 @@ function AdmittedPatientsTab() {
     status: "scheduled" as AppointmentStatus,
   };
   const [form, setForm] = useState(emptyForm);
+
+  // Load appointments from Supabase on mount
+  useEffect(() => {
+    const loadData = async () => {
+      const data = await loadAppointmentsFromSupabase();
+      setAppointments(data);
+    };
+    loadData();
+  }, []);
 
   const persist = (data: AppointmentEntry[]) => {
     setAppointments(data);
